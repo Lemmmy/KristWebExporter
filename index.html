@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="X-UA-Compatible" content="ie=edge">
+
+  <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css" integrity="sha384-ggOyR0iXCbMQv3Xipma34MD+dH/1fQ784/j6cY/iJTQUOhcWr7x9JvoRxT2MZw1T" crossorigin="anonymous">
+
+  <title>KristWeb Legacy Wallet Restoration</title>
+</head>
+<body class="py-4">
+  <!-- Jumbotron lead text container-->
+  <div class="container">
+    <div class="jumbotron">
+      <h1 class="display-4">KristWeb Legacy Wallet Restoration</h1>
+      <p class="lead">KristWeb has moved to <a href="https://krist.club">https://krist.club</a>. Please use this tool to export your wallets from the old version of KristWeb and import them in the new one.</p>
+      <div class="alert alert-danger">
+        <b>IMPORTANT:</b> This tool will only work if you are using the <b>same browser</b> as your old KristWeb installation, and you have not cleared all site data or changed computers.
+      </div>
+      <div class="alert alert-primary mb-0">
+          <b>Note:</b> This tool, like KristWeb, is entirely clientside. No data is transferred between any servers, except for fetching wallet balances from the Krist API (or whichever sync node your wallets use). Feel free to view the page source &mdash; it is all contained within a single file. (right click, "View page source")
+      </div>
+    </div>
+  </div>
+
+  <!-- "Wallets not showing up?"/"No wallets found" text + button -->
+  <div class="container mt-4">
+    <div class="row">
+      <div class="col">
+        <p class="text-muted text-center"><b id="switch-text">Wallets not showing up?</b> <a href="http://kristweb.lemmmy.pw" class="btn btn-danger btn-sm ml-2" id="switch-button">Switch to HTTP</a></p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main UI -->
+  <div class="container" id="exporter-container" style="display: none">
+    <!-- "Found X wallets" text -->
+    <div class="row"><div class="col">
+      <p class="text-muted text-center mb-4">
+        Found <b id="found-wallets">0 wallets</b> and <b id="found-friends">0 address book entries</b>.
+      </p>
+    </div></div>
+
+    <!-- Master password form -->
+    <div class="row"><div class="col">
+      <div id="master-password-container" class="card border-danger">
+        <div class="card-header">Wallet decryption</div>
+        <form class="card-body" id="master-password-form" novalidate>
+          <p class="mb-0"><b class="text-danger">Your wallets are encrypted.</b> Enter your master password to decrypt them (entirely clientside):</p>
+          <div class="input-group">
+            <input type="password" class="form-control" placeholder="Old master password" id="master-password" required>
+            <div class="input-group-append">
+              <input class="btn btn-primary" type="submit" id="master-password-submit" value="Decrypt"
+                     style="border-top-right-radius: .25rem; border-bottom-right-radius: .25rem" />
+            </div>
+            <div class="invalid-feedback" style="display: none"></div>
+          </div>
+        </form>
+      </div>
+    </div></div>
+
+    <div class="alert alert-warning" id="sync-balances-row" style="display: none;">
+      <b>Note: </b> balances may not be up-to-date with the Krist sync nodes. Would you like to refresh them? (will contact Krist servers)
+      <button type="button" class="btn btn-warning btn-sm ml-2" id="sync-balances">Sync balances</button>
+    </div>
+
+    <!-- Wallet/friend previews -->
+    <div class="row mb-4" id="wallets-row" style="display: none;">
+      <div class="col col-md-6"> <!-- Wallets -->
+        <div class="card">
+          <div class="card-header d-flex flex-row align-items-center">
+            <span class="card-header-text flex-grow-1">Wallets</span>
+            <span class="badge badge-secondary mx-2" id="cum-balance">0 KST</span>
+            <span class="badge badge-primary" id="wallets-count">0</span>
+          </div>
+          <ul class="list-group list-group-flush overflow-auto" id="wallet-list" style="max-height: 300px"></ul>
+        </div>
+      </div>
+
+      <div class="col col-md-6"> <!-- Friends -->
+        <div class="card">
+          <div class="card-header d-flex flex-row align-items-center">
+            <span class="card-header-text flex-grow-1">Friends</span>
+            <span class="badge badge-primary" id="friends-count">0</span>
+          </div>
+          <ul class="list-group list-group-flush overflow-auto" id="friends-list" style="max-height: 300px"></ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- Data export row -->
+    <div class="row mt-2" id="export-row" style="display: none"><div class="col">
+      <h3>Wallet Import Code</h3>
+      <p class="mb-1">Import this data into <a href="https://krist.club">krist.club</a> or an alternative KristWeb host. (top right dropdown, "Import wallets")</p>
+      <p class="mt-1 mb-3"><small>Size: <b id="code-size">0 KiB</b></small></p>
+      <textarea id="export-textarea" rows="3" class="form-control my-2"></textarea>
+      <button id="export-save" type="button" class="btn btn-secondary">Save to File</button>
+      <button id="export-copy" type="button" class="btn btn-primary" data-clipboard-target="#export-textarea">Copy to Clipboard</button>
+    </div></div>
+  </div>
+  
+  <!-- Import Bootstrap and dependencies -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.4.1/jquery.min.js" integrity="sha256-CSXorXvZcTkaix6Yvo6HppcZGetbYMGWSFlBw8HfCJo=" crossorigin="anonymous"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.14.7/umd/popper.min.js" integrity="sha384-UO2eT0CpHqdSJQ6hJty5KVphtPhzWj9WO1clHTMGa3JDZwrnQq4sF86dIHNDz0W1" crossorigin="anonymous"></script>
+  <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/js/bootstrap.min.js" integrity="sha384-JjSmVgyd0p3pXB1rRibZUAYoIIy6OrQ6VrjIEaFf/nJGzIxFDsf4x0xIM+B07jRM" crossorigin="anonymous"></script>
+
+  <!-- Required for wallet decryption -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/3.1.9-1/crypto-js.min.js" integrity="sha256-u6BamZiW5tCemje2nrteKC2KoLIKX9lKPSpvCkOhamw=" crossorigin="anonymous"></script>
+
+  <!-- To save export codes -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/1.3.8/FileSaver.min.js" integrity="sha256-FPJJt8nA+xL4RU6/gsriA8p8xAeLGatoyTjldvQKGdE=" crossorigin="anonymous"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/clipboard.js/2.0.4/clipboard.min.js" integrity="sha256-FiZwavyI2V6+EXO1U+xzLG3IKldpiTFf3153ea9zikQ=" crossorigin="anonymous"></script>
+
+  <!-- Note: due to laziness, I use ES6+ syntax in this code. If you are using an older browser, or experience any JS errors, let me know and I'll try and transpile it. -->
+  <script>
+    // jQuery variables:
+    const $switchText = $("#switch-text");
+    const $switchButton = $("#switch-button");
+
+    const $exporterContainer = $("#exporter-container");
+
+    const $foundWallets = $("#found-wallets");
+    const $foundFriends = $("#found-friends");
+
+    const $masterPasswordContainer = $("#master-password-container");
+    const $masterPasswordRow = $masterPasswordContainer.closest(".row");
+    const $masterPasswordForm = $("#master-password-form");
+    const $masterPassword = $("#master-password");
+    const $masterPasswordSubmit = $("#master-password-submit");
+    const $masterPasswordFeedback = $masterPasswordForm.find(".invalid-feedback");
+
+    const $walletsRow = $("#wallets-row");
+    const $walletList = $("#wallet-list");
+    const $walletsCount = $("#wallets-count");
+    const $cumBalance = $("#cum-balance");
+    const $friendsList = $("#friends-list");
+    const $friendsCount = $("#friends-count");
+
+    const $syncBalancesRow = $("#sync-balances-row");
+    const $syncBalances = $("#sync-balances");
+
+    const $exportRow = $("#export-row");
+    const $exportTextarea = $("#export-textarea");
+    const $exportSave = $("#export-save");
+    const $exportCopy = $("#export-copy");
+    const $codeSize = $("#code-size");
+
+    // Keep track of found wallets and friends
+    const rawWallets = {}, rawFriends = {};
+    const wallets = {}, friends = {};
+    let masterPassword;
+
+    /** Updates the "Switch to HTTP(S)" button. **/
+    function updateSwitchButton() {
+      if (location.protocol !== "https:") 
+        $switchButton.text("Switch to HTTPS").removeClass("btn-danger").addClass("btn-success").attr("href", "https://kristweb.lemmmy.pw");
+    }
+
+    /** Check localStorge to find an existing KristWeb installation.
+        @returns {boolean} Whether or not an installation is found. **/
+    function checkLocalStorage() {
+      // If KristWeb settings are not found, update the text:
+      if (!localStorage || !localStorage.salt || !localStorage.tester) {
+        $switchText // don't execute any more code
+          .addClass("text-danger")
+          .text("No wallets found on this domain.");
+
+        return false; // no installation found
+      }
+
+      // Go through the localStorage keys to find Wallet and Friend entries
+      for (let i = 0; i < localStorage.length; i++) {
+        let key = localStorage.key(i);
+
+        if (key.startsWith("Wallet-")) { // Wallet entries
+          rawWallets[key] = localStorage.getItem(key);
+        } else if (key.startsWith("Friend-")) { // Friends are address book entries
+          rawFriends[key] = localStorage.getItem(key);
+        }
+      }
+
+      // Update the 'found X wallets' etc text
+      const walletCount = Object.keys(rawWallets).length, friendCount = Object.keys(rawFriends).length;
+      $foundWallets.text(`${walletCount.toLocaleString()} wallet${walletCount === 1 ? "" : "s"}`);
+      $foundFriends.text(`${friendCount.toLocaleString()} address book ${friendCount === 1 ? "entry" : "entries"}`);
+
+      return true; // installation found
+    }
+
+    /** Validates a KristWeb master password.
+        @param {string} password The password that the user entered.
+        @param {string} salt The salt from localStorage.
+        @param {string} tester The tester from localStorage.
+        @returns {boolean} Whether or not the password validated successfully. */
+    function validatePassword(password, salt, tester) {
+      try { // attempt to decrypt the tester with the master password
+        const result = CryptoJS.AES.decrypt(tester, password).toString(CryptoJS.enc.Utf8);
+        return result === salt; // if the decrypted tester is equal to the salt, the password is correct
+      } catch (e) { // decryption failed
+        return false;
+      }
+    }
+
+    /** Callback function for a successful master password login.
+        @callback masterPasswordCallback
+        @param {string} The master password. **/
+    /** Prompt the user for their master password until the correct one is given.
+        @param {masterPasswordCallback} callback Function to run when a password is given. **/
+    function getMasterPassword(callback) {
+      const { salt, tester } = localStorage;
+
+      /** Show an error underneath the password field.
+          @param {string} message The error message to show. **/
+      function showError(message) {
+        $masterPasswordFeedback.text(message).show();
+        return false; // for tail calling
+      }
+
+      $masterPasswordForm.submit(() => {
+        try {
+          $masterPasswordFeedback.hide(); // hide the feedback text
+
+          const password = $masterPassword.val();
+          if (!password) return showError("Field is required.");
+          if (!validatePassword(password, salt, tester)) 
+            return showError("Wallet password is incorrect.");
+
+          // password is valid, continue:
+          $masterPasswordContainer.removeClass("border-danger").addClass("border-success");
+          $masterPasswordSubmit.attr("disabled", true);
+          $masterPasswordRow.slideUp(); // hide the whole decryption row
+
+          masterPassword = password; // set the master password
+          callback(masterPassword); // run the callback to continue the program
+        } catch (e) {
+          console.error(e);
+        } finally {
+          return false; // cancel default form submission behaviour
+        }
+      });
+    }
+
+    /** Decrypt the wallet and address book data.
+        @param {string} masterPassword The master password. **/
+    function decryptWallets(masterPassword) {
+      for (const [id, encrypted] of Object.entries(rawWallets)) { // decrypt the wallet
+        const decrypted = CryptoJS.AES.decrypt(encrypted, masterPassword).toString(CryptoJS.enc.Utf8);
+        const wallet = JSON.parse(decrypted);
+        wallets[id] = wallet;
+      }
+
+      for (const [id, encrypted] of Object.entries(rawFriends)) { // decrypt the friend
+        const decrypted = CryptoJS.AES.decrypt(encrypted, masterPassword).toString(CryptoJS.enc.Utf8);
+        const friend = JSON.parse(decrypted);
+        friends[id] = friend;
+      }
+    }
+
+    /** Show the wallet entries. **/
+    function showWallets() {
+      /** Display a wallet in the wallet listing.
+          @param {string} id The ID of this wallet in the wallets object.
+          @param {object} wallet The actual decrypted and parsed wallet data. **/
+      function addWallet(id, wallet) {
+        const $wallet = $("<ul>")
+          .addClass("list-group-item d-flex flex-column wallet")
+          .attr("data-wallet-id", id);
+
+        const $walletLabel = $("<b>")
+          .addClass("flex-row wallet-label")
+          .text(wallet.label)
+          .appendTo($wallet);
+
+        $("<div>")
+          .addClass("flex-row wallet-info")
+          .append($("<span>") 
+            .addClass("wallet-address")
+            .text(wallet.address))
+          .append($("<span>") 
+            .addClass("text-muted")
+            .html(" &mdash; "))
+          .append($("<b>") 
+            .addClass("wallet-balance")
+            .text(`${(wallet.balance || 0).toLocaleString()} KST`))
+          .appendTo($wallet);     
+          
+        $wallet.appendTo($walletList);
+      }
+
+      // Show all the wallets in the list
+      let cumBalance = 0;
+      for (const [id, wallet] of Object.entries(wallets)) {
+        addWallet(id, wallet);
+        cumBalance += (wallet.balance || 0); // sum up the cumulative balance
+      }
+      
+      // Display the cumulative balance, in green if positive
+      $cumBalance.text(`${cumBalance.toLocaleString()} KST`);
+      if (cumBalance > 0) $cumBalance.removeClass("badge-secondary").addClass("badge-success");
+
+      const walletCount = Object.keys(wallets).length;
+      $walletsCount.text(`${walletCount.toLocaleString()} wallet${walletCount === 1 ? "" : "s"}`);
+    }
+
+    /** Show the address book entries.  **/
+    function showFriends() {
+      /** Display a friend (address book entry) in the friends listing.
+          @param {string} id The ID of this friend in the friends object.
+          @param {object} wallet The actual decrypted and parsed friend data. **/
+      function addFriend(id, friend) {
+        $("<ul>")
+          .addClass("list-group-item d-flex flex-column friend")
+          .attr("data-friend-id", id)
+          .append($("<b>")
+            .addClass("flex-row friend-label")
+            .text(friend.label))
+          .append($("<span>") 
+            .addClass("friend-address")
+            .text(friend.address))
+          .appendTo($friendsList);
+      }
+
+      // Show all the friends in the list
+      for (const [id, friend] of Object.entries(friends)) {
+        addFriend(id, friend);
+      }
+
+      const friendsCount = Object.keys(friends).length;
+      $friendsCount.text(`${friendsCount.toLocaleString()} ${friendsCount === 1 ? "entry" : "entries"}`);
+    }
+
+    /** Initialise the button to synchronise wallet balances with the Krist sync nodes. **/
+    function setupSyncBalances() {
+      $syncBalances.click(async () => { // sync wallet balances with sync nodes
+        $syncBalances.attr("disabled", true);
+
+        const balances = await Promise.all(Object.entries(wallets).map(async ([id, wallet]) => {
+          const syncNode = wallet.syncNode || "https://krist.ceriat.net";
+          const url = `${syncNode}/addresses/${encodeURIComponent(wallet.address)}`;
+
+          try {
+            const data = await $.get({
+              url,
+              dataType: "json"
+            });
+            if (!data.ok || !data.address) 
+              throw Error("Server returned an error: " + data.error);
+
+            const { balance } = data.address;
+            $(`.wallet[data-wallet-id=${id}] .wallet-balance`)
+              .text(`${balance.toLocaleString()} KST`);
+            return balance;
+          } catch (e) {
+            console.error(`Error getting wallet balance for ${wallet.address} at sync node ${syncNode}:`, e);
+            return wallet.balance || 0;
+          }
+        }));
+
+        const cumBalance = balances.reduce((cum, val) => cum + val, 0);
+        $cumBalance.text(`${cumBalance.toLocaleString()} KST`);
+
+        $syncBalancesRow.slideUp();
+      });
+
+      $syncBalancesRow.slideDown();
+    }
+
+    /** Generate the KristWeb export code, to be imported into the new site.
+        @params {string} masterPassword The master password to encrypt the wallets with.
+        @returns {string} The KristWeb backup code. **/
+    function generateExportCode(masterPassword) {
+      const { salt, tester } = localStorage;
+      const data = { // data output object
+        salt, tester,
+        wallets: {}, friends: {}
+      };
+
+      // Re-encrypt the wallets and store them in the output object
+      for (const [id, wallet] of Object.entries(wallets)) {
+        data.wallets[id] = CryptoJS.AES.encrypt(JSON.stringify(wallet), masterPassword).toString();
+      }
+
+      for (const [id, friend] of Object.entries(friends)) {
+        data.friends[id] = CryptoJS.AES.encrypt(JSON.stringify(friend), masterPassword).toString();
+      }
+
+      // Re-create the "Wallet" and "Friend" index fields
+      data.wallets["Wallet"] = Object.keys(wallets).map(k => k.replace(/^Wallet\-/, "")).join(",");
+      data.friends["Friend"] = Object.keys(wallets).map(k => k.replace(/^Friend\-/, "")).join(",");
+
+      // Stringify JSON, convert to base64, and return
+      return btoa(JSON.stringify(data));
+    }
+
+    /** Show the export textarea, copy and download buttons. **/
+    function showExport(masterPassword) {
+      const code = generateExportCode(masterPassword);
+      const codeSize = (code.length / 1024).toFixed(1);
+
+      $exportTextarea.text(code);
+      $codeSize.text(`${codeSize} KiB`);
+
+      $exportSave.off("click");
+      $exportSave.click(() => {
+        const blob = new Blob([code], { type: "text/plain;charset=utf-8" });
+        saveAs(blob, `KristWeb-export-${new Date().getTime()}.txt`);
+      });
+
+      $exportCopy.off("click");
+      new ClipboardJS("#export-copy");
+
+      $exportRow.slideDown();
+    }
+
+    $(() => { // Run on page ready (main function)
+      // Update the 'Switch' button according to scheme
+      updateSwitchButton();
+
+      // Find a KristWeb installation, and stop executing if one isn't found:
+      if (!checkLocalStorage()) return;
+
+      // Prompt for the master password, and show the wallets when it's given:
+      getMasterPassword(masterPassword => {
+        decryptWallets(masterPassword);
+        showWallets();
+        showFriends();
+        setupSyncBalances();
+        $walletsRow.slideDown();
+        showExport(masterPassword);
+      });
+
+      $exporterContainer.show(); // show the main screen
+    });
+  </script>
+</body>
+</html>
